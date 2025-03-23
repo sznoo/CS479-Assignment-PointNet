@@ -68,7 +68,20 @@ class PointNetFeat(nn.Module):
             self.stn64 = STNKd(k=64)
 
         # point-wise mlp
-        # TODO : Implement point-wise mlp model based on PointNet Architecture.
+        # TODO 0-1 : Implement point-wise mlp model based on PointNet Architecture.
+        self.mlp1 = nn.Sequential(
+            nn.Linear(3, 64), 
+            nn.ReLU(), 
+            nn.Linear(64, 64), 
+        )
+        self.mlp2 = nn.Sequential(
+            nn.Linear(64, 64), 
+            nn.ReLU(), 
+            nn.Linear(64, 128), 
+            nn.ReLU(), 
+            nn.Linear(128, 1024)
+        )
+    
 
     def forward(self, pointcloud):
         """
@@ -78,9 +91,21 @@ class PointNetFeat(nn.Module):
             - Global feature: [B,1024]
             - ...
         """
+        device = pointcloud.device
+        # TODO 0-2: Implement forward function.
+        trans3 = self.stn3(pointcloud.permute(0, 2, 1)).to(device)
+        x  = torch.bmm(pointcloud, trans3).to(device)
+        x = self.mlp1(x)
 
-        # TODO : Implement forward function.
-        pass
+        trans64 = self.stn64(x.permute(0, 2, 1)).to(device)
+
+        x = torch.bmm(x, trans64).to(device)
+
+        x = self.mlp2(x)
+        x, _ = torch.max(x, dim =1)
+
+        return x
+
 
 
 class PointNetCls(nn.Module):
@@ -93,6 +118,13 @@ class PointNetCls(nn.Module):
         
         # returns the final logits from the max-pooled features.
         # TODO : Implement MLP that takes global feature as an input and return logits.
+        self.mlp = nn.Sequential(
+            nn.Linear(1024, 512), 
+            nn.ReLU(), 
+            nn.Linear(512, 256), 
+            nn.ReLU(), 
+            nn.Linear(256, self.num_classes)
+        )
 
     def forward(self, pointcloud):
         """
@@ -102,8 +134,12 @@ class PointNetCls(nn.Module):
             - logits [B,num_classes]
             - ...
         """
+        device = pointcloud.device
         # TODO : Implement forward function.
-        pass
+        x = self.pointnet_feat(pointcloud).to(device)
+        x = self.mlp(x)
+        return x
+        
 
 
 class PointNetPartSeg(nn.Module):
