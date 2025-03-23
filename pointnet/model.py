@@ -92,20 +92,27 @@ class PointNetFeat(nn.Module):
             - ...
         """
         device = pointcloud.device
+        
+        b, n, _ = pointcloud.shape
         # TODO 0-2: Implement forward function.
-        trans3 = self.stn3(pointcloud.permute(0, 2, 1)).to(device)
-        x  = torch.bmm(pointcloud, trans3).to(device)
+        if self.input_transform:
+            trans3 = self.stn3(pointcloud.permute(0, 2, 1)).to(device)
+            x  = torch.bmm(pointcloud, trans3).to(device)
+
         x = self.mlp1(x)
 
-        trans64 = self.stn64(x.permute(0, 2, 1)).to(device)
+        if self.feature_transform:
+            trans64 = self.stn64(x.permute(0, 2, 1)).to(device)
+            x = torch.bmm(x, trans64).to(device)
 
-        x = torch.bmm(x, trans64).to(device)
-
-        x = self.mlp2(x)
-        x, _ = torch.max(x, dim =1)
-
-        return x
-
+        global_feature = self.mlp2(x)
+        global_feature, _ = torch.max(global_feature, dim =1)
+        if self.mode == 'cls':
+            return global_feature
+        if self.mode == 'seg':
+            global_feature_expand = global_feature.reshape(b, 1, 1024).expand(-1, n, 1024)
+            z = torch.cat([x, global_feature_expand], dim = 2)
+            return z
 
 
 class PointNetCls(nn.Module):
@@ -115,6 +122,7 @@ class PointNetCls(nn.Module):
         
         # extracts max-pooled features
         self.pointnet_feat = PointNetFeat(input_transform, feature_transform)
+        self.pointnet_feat.mode = 'cls'
         
         # returns the final logits from the max-pooled features.
         # TODO : Implement MLP that takes global feature as an input and return logits.
@@ -148,7 +156,23 @@ class PointNetPartSeg(nn.Module):
 
         # returns the logits for m part labels each point (m = # of parts = 50).
         # TODO: Implement part segmentation model based on PointNet Architecture.
-        pass
+        input_transform = True
+        feature_transform = True
+        self.pointnet_feat = PointNetFeat(input_transform, feature_transform)
+        self.pointnet_feat.mode = 'seg'
+
+        self.mlp1 = nn.Sequential(
+            nn.Linear(1088, 512), 
+            nn.ReLU(), 
+            nn.Linear(512, 256), 
+            nn.ReLU(), 
+            nn.Linear(256, 128)
+        )
+        self.mlp2 = nn.Sequential(
+            nn.Linear(128, 128), 
+            nn.ReLU(), 
+            nn.Linear(128, m), 
+        )
 
     def forward(self, pointcloud):
         """
@@ -159,7 +183,13 @@ class PointNetPartSeg(nn.Module):
             - ...
         """
         # TODO: Implement forward function.
-        pass
+        device = pointcloud.device
+        x = self.pointnet_feat(pointcloud).to(device)
+        x = self.mlp1(x)
+        x = self.mlp2(x)
+        x = x.permute(0, 2, 1)
+        return x
+        
 
 
 class PointNetAutoEncoder(nn.Module):
@@ -169,6 +199,15 @@ class PointNetAutoEncoder(nn.Module):
 
         # Decoder is just a simple MLP that outputs N x 3 (x,y,z) coordinates.
         # TODO : Implement decoder.
+        self.num_points = num_points
+
+        input_transform = True
+        feature_transform = True
+        self.pointnet_feat = PointNetFeat(input_transform, feature_transform)
+        self.pointnet_feat.mode = 'ae'
+
+        
+
 
     def forward(self, pointcloud):
         """
