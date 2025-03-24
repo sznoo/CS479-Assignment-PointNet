@@ -31,10 +31,6 @@ def step(points, labels, model):
     _, preds = torch.max(outputs, dim = 1)
     crit = torch.nn.CrossEntropyLoss()
     loss = crit(outputs, labels)
-    
-
-    # loss = None
-    # preds = None
     return loss, preds
 
 

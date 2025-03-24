@@ -7,7 +7,8 @@ from model import PointNetAutoEncoder
 from dataloaders.modelnet import get_data_loaders
 from utils.metrics import Accuracy
 from utils.model_checkpoint import CheckpointManager
-from pytorch3d.loss.chamfer import chamfer_distance
+from pytorch3d.loss import chamfer_distance
+# import pytorch3d
 
  
 
@@ -24,17 +25,25 @@ def step(points, model):
     # Hint : Use chamferDist defined in above
     # Hint : You can compute chamfer distance between two point cloud pc1 and pc2 by chamfer_distance(pc1, pc2)
     
-    preds = None
-    loss = None
+    points = points.to(device)
+    model = model.to(device)
 
+    model.train()
+    
+    preds = model(points)
+    b, n, _ = points.shape
+    loss, _ = chamfer_distance(points, preds)    
     return loss, preds
+
 
 
 def train_step(points, model, optimizer):
     loss, preds = step(points, model)
 
     # TODO : Implement backpropagation using optimizer and loss
-
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
     return loss, preds
 
 

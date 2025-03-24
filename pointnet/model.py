@@ -71,13 +71,16 @@ class PointNetFeat(nn.Module):
         # TODO 0-1 : Implement point-wise mlp model based on PointNet Architecture.
         self.mlp1 = nn.Sequential(
             nn.Linear(3, 64), 
+            # nn.BatchNorm1d(2048),
             nn.ReLU(), 
             nn.Linear(64, 64), 
         )
         self.mlp2 = nn.Sequential(
             nn.Linear(64, 64), 
+            # nn.BatchNorm1d(2048),
             nn.ReLU(), 
             nn.Linear(64, 128), 
+            # nn.BatchNorm1d(2048),
             nn.ReLU(), 
             nn.Linear(128, 1024)
         )
@@ -107,7 +110,7 @@ class PointNetFeat(nn.Module):
 
         global_feature = self.mlp2(x)
         global_feature, _ = torch.max(global_feature, dim =1)
-        if self.mode == 'cls':
+        if self.mode == 'cls' or self.mode == 'ae':
             return global_feature
         if self.mode == 'seg':
             global_feature_expand = global_feature.reshape(b, 1, 1024).expand(-1, n, 1024)
@@ -206,7 +209,24 @@ class PointNetAutoEncoder(nn.Module):
         self.pointnet_feat = PointNetFeat(input_transform, feature_transform)
         self.pointnet_feat.mode = 'ae'
 
-        
+        self.fc1 = nn.Sequential(
+            nn.Linear(1024, self.num_points//4), 
+            nn.BatchNorm1d(self.num_points//4),
+            nn.ReLU()
+        )
+        self.fc2 = nn.Sequential(
+            nn.Linear(self.num_points//4, self.num_points//2), 
+            nn.BatchNorm1d(self.num_points//2), 
+            nn.ReLU()
+        )
+        self.fc3 = nn.Sequential(
+            nn.Linear(self.num_points//2, self.num_points), 
+            nn.Dropout(0.25), 
+            nn.BatchNorm1d(self.num_points), 
+            nn.ReLU()
+        )
+        self.fc4 = nn.Linear(self.num_points, self.num_points*3)
+
 
 
     def forward(self, pointcloud):
@@ -218,8 +238,15 @@ class PointNetAutoEncoder(nn.Module):
             - ...
         """
         # TODO : Implement forward function.
-        pass
-
+        b, n, _ = pointcloud.shape
+        device = pointcloud.device
+        x = self.pointnet_feat(pointcloud).to(device)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        x = self.fc4(x)
+        x = x.reshape(b, n, 3)
+        return x
 
 def get_orthogonal_loss(feat_trans, reg_weight=1e-3):
     """
